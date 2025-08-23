@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EchoTV — Mobile Linear Stream</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<style>
+  :root{
+    --bg:#0b0f14; --card:#121923; --ink:#e6ecf3; --muted:#8aa0b3; --brand:#3b82f6; --accent:#22c55e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;background:var(--bg);color:var(--ink);}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px; background:#0d141d; position:sticky; top:0; z-index:10;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;}
+  .logo{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,var(--brand),#8b5cf6);}
+  .now{font-size:12px;color:var(--muted);}
+  .chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .chip{padding:6px 10px;border-radius:10px;background:#172131;color:#b6c7d8;font-weight:600;font-size:12px;}
+  .chip.live{background:#2b1b1b;color:#ffb3b3;border:1px solid #4b2626;}
+  .btn{padding:8px 12px;border-radius:10px;border:1px solid #233144;background:#101724;color:#bcd0e3;cursor:pointer;font-size:14px;}
+  .btn:hover{border-color:#2f425b;}
+  .wrap{display:flex;flex-direction:column;gap:12px;padding:12px;max-width:100%;margin:0 auto;}
+  .stage{background:var(--card);border-radius:14px;overflow:hidden;position:relative;}
+  video{width:100%;height:auto;border-radius:10px;}
+  .playerWrap{position:relative;display:flex;flex-direction:column;}
+  .overlay{
+    position:absolute;inset:0;display:grid;place-items:center;
+    background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,.15) 35%,rgba(0,0,0,.0));
+    opacity:0;pointer-events:none;transition:.25s;
+  }
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .unmute{
+    padding:12px 18px;border-radius:999px;border:1px solid rgba(255,255,255,.25);
+    background:rgba(0,0,0,.45);color:#fff;font-weight:700;backdrop-filter: blur(6px);cursor:pointer;font-size:16px;
+  }
+  .timeline{margin-top:8px;}
+  .bar{height:8px;background:#172131;border-radius:999px;overflow:hidden;}
+  .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--brand),var(--accent));}
+  .row{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--muted);}
+  .guide{background:var(--card);border:1px solid #1f2a36;border-radius:14px;max-height:250px;overflow-y:auto;margin-top:10px;}
+  .guide h3{margin:10px;padding:0 8px;color:var(--muted);font-weight:600;font-size:14px;}
+  .item{display:flex;gap:10px;padding:8px 10px;border-top:1px solid #18212d;cursor:pointer;font-size:12px;}
+  .item:first-of-type{border-top:none;}
+  .idx{width:24px;height:24px;display:grid;place-items:center;border-radius:6px;background:#172131;color:#9db4c9;font-size:12px;flex:0 0 auto;}
+  .meta{flex:1;}
+  .title{font-weight:600;font-size:13px;}
+  .dur{font-size:11px;color:var(--muted);}
+  .item.active{background:#0f1722;border-left:3px solid var(--brand);padding-left:7px;}
+  @media (min-width:600px){
+    .wrap{flex-direction:row; gap:12px;}
+    .guide{max-height:none; width:320px;}
+    .stage{flex:1;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo"></div>
+    <div>
+      <div>EchoTV</div>
+      <div class="now" id="clock">--:--</div>
+    </div>
+  </div>
+  <div class="chips">
+    <span class="chip" id="nowTitle">Loading…</span>
+    <span class="chip" id="upNext">Next: —</span>
+    <button class="btn" id="skipBtn">Skip ▶</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <main class="stage">
+    <div class="playerWrap">
+      <video id="player" playsinline webkit-playsinline preload="metadata" muted></video>
+      <div class="overlay show" id="overlay">
+        <button class="unmute" id="unmuteBtn">Tap to Unmute 🔊</button>
+      </div>
+      <div class="timeline">
+        <div class="bar"><div class="fill" id="fill"></div></div>
+        <div class="row">
+          <div class="hint" id="status">Starting…</div>
+          <div class="hint" id="timeLeft">—</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="guide" id="guide">
+    <h3>TV Guide</h3>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+<script>
+const PLAYLIST = [
+  { title: "Echo Launch Reel", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", durationSec: 300 },
+  { title: "Nature Loop (HLS demo)", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", durationSec: 600 },
+  { title: "Sintel Trailer", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", durationSec: 420 },
+  { title: "Tears of Steel", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", durationSec: 600 },
+  ...Array.from({length:56}, (_,i)=>({title:`Channel ${i+5}`,url:"https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",durationSec:300}))
+];
+
+const video = document.getElementById('player');
+const guideEl = document.getElementById('guide');
+const fillEl = document.getElementById('fill');
+const statusEl = document.getElementById('status');
+const timeLeftEl = document.getElementById('timeLeft');
+const nowTitleEl = document.getElementById('nowTitle');
+const upNextEl = document.getElementById('upNext');
+const overlayEl = document.getElementById('overlay');
+const unmuteBtn = document.getElementById('unmuteBtn');
+const skipBtn = document.getElementById('skipBtn');
+
+let idx = 0;
+let startedAt = 0;
+let maxDuration = 0;
+let tickTimer = null;
+let hls = null;
+
+function fmtTime(sec){sec=Math.max(0,Math.floor(sec));const m=Math.floor(sec/60),s=sec%60;return`${m}:${String(s).padStart(2,'0')}`;}
+function loadSource(url){if(hls){hls.destroy();hls=null;}if(url.endsWith(".m3u8")){if(Hls.isSupported()){hls=new Hls({maxBufferLength:30});hls.loadSource(url);hls.attachMedia(video);}else if(video.canPlayType('application/vnd.apple.mpegurl')){video.src=url;}else{statusEl.textContent="HLS not supported in this browser.";} }else{video.src=url;} }
+
+function renderGuide(){
+  const frag=document.createDocumentFragment();
+  PLAYLIST.forEach((item,i)=>{
+    const row=document.createElement('div');
+    row.className='item'+(i===idx?' active':'');
+    row.dataset.index=i;
+    row.innerHTML=`<div class="idx">${i+1}</div><div class="meta"><div class="title">${item.title}</div><div class="dur">${Math.round((item.durationSec||1800)/60)} min slot</div></div>`;
+    row.addEventListener('click',()=>jumpTo(i));
+    frag.appendChild(row);
+  });
+  guideEl.querySelectorAll('.item').forEach(n=>n.remove());
+  guideEl.appendChild(frag);
+}
+
+function highlightActive(){guideEl.querySelectorAll('.item').forEach(el=>el.classList.remove('active'));const active=guideEl.querySelector(`.item[data-index="${idx}"]`);active&&active.classList.add('active');active&&active.scrollIntoView({block:'nearest',behavior:'smooth'});}
+function jumpTo(newIndex){idx=(newIndex+PLAYLIST.length)%PLAYLIST.length;startItem();}
+function nextItem(){idx=(idx+1)%PLAYLIST.length;startItem();}
+function startItem(){const item=PLAYLIST[idx];maxDuration=item.durationSec||1800;startedAt=Date.now();nowTitleEl.textContent=item.title;const nxt=PLAYLIST[(idx+1)%PLAYLIST.length];upNextEl.textContent=`Next: ${nxt?nxt.title:'—'}`;statusEl.textContent='Loading…';timeLeftEl.textContent=fmtTime(maxDuration);fillEl.style.width='0%';highlightActive();loadSource(item.url);video.muted=true;video.autoplay=true;const playPromise=video.play();if(playPromise){playPromise.catch(()=>{});}overlayEl.classList.toggle('show',video.muted);if(tickTimer)cancelAnimationFrame(tickTimer);tick();}
+function tick(){const elapsed=(Date.now()-startedAt)/1000;const remaining=Math.max(0,maxDuration-elapsed);timeLeftEl.textContent=`Time left: ${fmtTime(remaining)}`;const pct=Math.min(100,(elapsed/maxDuration)*100);fillEl.style.width=`${pct}%`;statusEl.textContent=`On Air • Slot ${idx+1}/${PLAYLIST.length}`;if(remaining<=0){nextItem();return;}tickTimer=requestAnimationFrame(tick);}
+video.addEventListener('ended',()=>nextItem());
+unmuteBtn.addEventListener('click',async()=>{video.muted=false;await video.play();overlayEl.classList.remove('show');});
+skipBtn.addEventListener('click',()=>nextItem());
+setInterval(()=>{const d=new Date();const hh=String(d.getHours()).padStart(2,'0');const mm=String(d.getMinutes()).padStart(2,'0');document.getElementById('clock').textContent=`${hh}:${mm}`;},1000);
+renderGuide();
+startItem();
+</script>
+</body>
+</html>
