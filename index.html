@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>EchoTV — Mobile Linear Stream</title>
+ <link rel="icon" type="image/x-icon" href="favicon.ico" />
+ <link rel="manifest" href="manifest.json" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <style>
   :root{
@@ -92,6 +94,13 @@
   </aside>
 </div>
 
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('service-worker.js');
+  });
+}
+</script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
 <script>
 const PLAYLIST = [
